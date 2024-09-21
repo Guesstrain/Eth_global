@@ -10,8 +10,13 @@ type Wallet struct {
 }
 
 type Prize struct {
+	Address      string `json:address`
+	RandomNumber uint64 `json:randomNumber`
+}
+
+type PrizeReward struct {
 	Address string  `json:address`
-	Prize   float64 `json:prize`
+	Amount  float64 `json:amount`
 }
 
 type PrizeList struct {

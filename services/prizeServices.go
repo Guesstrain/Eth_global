@@ -2,31 +2,39 @@ package services
 
 import (
 	"context"
-	"crypto/ecdsa"
 	"fmt"
 	"log"
 	"math/big"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/Guesstrain/ethglobal/database"
 	"github.com/Guesstrain/ethglobal/models"
-	"github.com/ethereum/go-ethereum/accounts/abi"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/onflow/go-ethereum"
+	"github.com/onflow/go-ethereum/accounts/abi"
+	"github.com/onflow/go-ethereum/common"
+	"github.com/onflow/go-ethereum/ethclient"
 )
 
 type PrizeService interface {
 	InsertPrize(prize models.PrizeList) error
 	UpdatePrize(prizeName string, updatedPrize models.PrizeList) error
-	DistributePrize() []models.Prize
+	DistributePrize() []models.PrizeReward
 }
 
 type PrizeServiceImpl struct {
 	dbService database.DatabaseService
 }
+
+// Contract ABI
+var contractABI = `[{"inputs":[{"internalType":"address[]","name":"_add","type":"address[]"},{"internalType":"uint64","name":"min","type":"uint64"},{"internalType":"uint64","name":"max","type":"uint64"}],"name":"getRandomInRange","outputs":[{"internalType":"uint64","name":"","type":"uint64"}],"stateMutability":"nonpayable","type":"function"}]`
+
+// Contract Address
+const contractAddress = "0x9AB786163fc09E3733e5E9133492eD47a814A029"
+
+// Infura or Alchemy endpoint
+const infuraURL = "https://mainnet.infura.io/v3/YOUR_INFURA_PROJECT_ID"
 
 func NewPrizeService(dbService database.DatabaseService) PrizeService {
 	return &PrizeServiceImpl{dbService: dbService}
@@ -63,10 +71,14 @@ func (s *PrizeServiceImpl) UpdatePrize(prizeName string, updatedPrize models.Pri
 	return nil
 }
 
-func (s *PrizeServiceImpl) DistributePrize() []models.Prize {
+func (s *PrizeServiceImpl) DistributePrize() []models.PrizeReward {
 	startTime := time.Now().AddDate(-10, 0, 0) // 10 years ago from now
 	endTime := time.Now()                      // Current time
 	var prizes []models.Prize
+	var prizeReward []models.PrizeReward
+	const FirstReward float64 = 1000.00
+	const SecondReward float64 = 500.00
+	const ThirdReward float64 = 100.00
 
 	wallets, err := s.dbService.QueryWalletsByTimePeriod(startTime, endTime)
 	if err != nil {
@@ -75,77 +87,76 @@ func (s *PrizeServiceImpl) DistributePrize() []models.Prize {
 	fmt.Println("wallets: ", wallets)
 
 	for _, wallet := range wallets {
-		prizes = append(prizes, models.Prize{wallet.Address, 11})
+		randomNumber := CallSmartContract(wallet.Address)
+		prizes = append(prizes, models.Prize{wallet.Address, randomNumber})
 	}
 
-	return prizes
+	sort.Slice(prizes, func(i, j int) bool {
+		return prizes[i].RandomNumber < prizes[j].RandomNumber
+	})
+
+	for i, wallet := range wallets {
+		if i < 10 {
+			prizeReward = append(prizeReward, models.PrizeReward{wallet.Address, FirstReward})
+		} else if i < 100 {
+			prizeReward = append(prizeReward, models.PrizeReward{wallet.Address, SecondReward})
+		} else if i < 500 {
+			prizeReward = append(prizeReward, models.PrizeReward{wallet.Address, ThirdReward})
+		} else {
+			break
+		}
+	}
+	return prizeReward
 }
 
-func CallSmartContract(addresses string) {
-	// Connect to an Ethereum node (Infura or local node)
-	client, err := ethclient.Dial("https://mainnet.infura.io/v3/d68e6d7c2e5c42fbb30fe563ada8f432")
+func CallSmartContract(address string) uint64 {
+	client, err := ethclient.Dial(infuraURL)
 	if err != nil {
-		log.Fatalf("Failed to connect to the Ethereum client: %v", err)
+		log.Fatalf("Failed to connect to the Ethereum network: %v", err)
 	}
 
-	// Load the private key
-	privateKey, err := crypto.HexToECDSA("YOUR_PRIVATE_KEY")
+	// Load the contract ABI
+	parsedABI, err := abi.JSON(strings.NewReader(contractABI))
 	if err != nil {
-		log.Fatalf("Failed to load private key: %v", err)
+		log.Fatalf("Failed to parse contract ABI: %v", err)
 	}
 
-	// Derive the sender's public key and address
-	publicKey := privateKey.Public()
-	publicKeyECDSA, ok := publicKey.(*ecdsa.PublicKey)
-	if !ok {
-		log.Fatalf("Error casting public key to ECDSA")
-	}
-	fromAddress := crypto.PubkeyToAddress(*publicKeyECDSA)
+	// Contract address as a common.Address type
+	contractAddr := common.HexToAddress(contractAddress)
 
-	// Get the nonce for the sender
-	nonce, err := client.PendingNonceAt(context.Background(), fromAddress)
+	// Define the input parameters for getRandomInRange
+	addressList := []common.Address{
+		common.HexToAddress(address),
+	}
+	min := big.NewInt(1)   // Minimum range value
+	max := big.NewInt(100) // Maximum range value
+
+	// Pack the arguments for getRandomInRange function
+	input, err := parsedABI.Pack("getRandomInRange", addressList, min, max)
 	if err != nil {
-		log.Fatalf("Failed to get nonce: %v", err)
+		log.Fatalf("Failed to pack arguments: %v", err)
 	}
 
-	// Set the gas price and limit
-	gasPrice, err := client.SuggestGasPrice(context.Background())
+	// Create a call message
+	callMsg := ethereum.CallMsg{
+		To:   &contractAddr,
+		Data: input,
+	}
+
+	// Execute the call on the latest block
+	result, err := client.CallContract(context.Background(), callMsg, nil)
 	if err != nil {
-		log.Fatalf("Failed to get gas price: %v", err)
+		log.Fatalf("Failed to call contract: %v", err)
 	}
 
-	// Define the contract address and ABI
-	contractAddress := common.HexToAddress("0x9AB786163fc09E3733e5E9133492eD47a814A029")
-	contractABI, err := abi.JSON(strings.NewReader(`[ { "inputs": [ { "internalType": "uint256", "name": "_num", "type": "uint256" } ], "name": "set", "outputs": [], "stateMutability": "nonpayable", "type": "function" }, { "inputs": [], "name": "num", "outputs": [ { "internalType": "uint256", "name": "", "type": "uint256" } ], "stateMutability": "view", "type": "function" } ]`)) // Use your contract's ABI as JSON string
+	// Unpack the result
+	var randomNumber uint64
+	err = parsedABI.UnpackIntoInterface(&randomNumber, "getRandomInRange", result)
 	if err != nil {
-		log.Fatalf("Failed to parse ABI: %v", err)
+		log.Fatalf("Failed to unpack the result: %v", err)
 	}
 
-	var min, max = 0, 99999999
-	// Prepare the function call
-	data, err := contractABI.Pack("getRandomInRange", addresses, min, max) // Replace with your function name and parameters
-	if err != nil {
-		log.Fatalf("Failed to pack contract function: %v", err)
-	}
-
-	// Create the transaction
-	tx := types.NewTransaction(nonce, contractAddress, big.NewInt(0), 300000, gasPrice, data)
-
-	// Sign the transaction
-	chainID, err := client.NetworkID(context.Background())
-	if err != nil {
-		log.Fatalf("Failed to get network ID: %v", err)
-	}
-	signedTx, err := types.SignTx(tx, types.NewEIP155Signer(chainID), privateKey)
-	if err != nil {
-		log.Fatalf("Failed to sign transaction: %v", err)
-	}
-
-	// Send the transaction
-	err = client.SendTransaction(context.Background(), signedTx)
-	if err != nil {
-		log.Fatalf("Failed to send transaction: %v", err)
-	}
-
-	fmt.Printf("Transaction sent: %s\n", signedTx.Hash().Hex())
+	// Print the random number generated
+	fmt.Printf("Random Number: %d\n", randomNumber)
+	return randomNumber
 }
