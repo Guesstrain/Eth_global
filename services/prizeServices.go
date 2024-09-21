@@ -79,6 +79,7 @@ func (s *PrizeServiceImpl) DistributePrize() []models.PrizeReward {
 	const FirstReward float64 = 1000.00
 	const SecondReward float64 = 500.00
 	const ThirdReward float64 = 100.00
+	const MinimumReward float64 = 10.00
 
 	wallets, err := s.dbService.QueryWalletsByTimePeriod(startTime, endTime)
 	if err != nil {
@@ -103,7 +104,7 @@ func (s *PrizeServiceImpl) DistributePrize() []models.PrizeReward {
 		} else if i < 500 {
 			prizeReward = append(prizeReward, models.PrizeReward{wallet.Address, ThirdReward})
 		} else {
-			break
+			prizeReward = append(prizeReward, models.PrizeReward{wallet.Address, MinimumReward})
 		}
 	}
 	return prizeReward
