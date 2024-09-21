@@ -74,8 +74,6 @@ func (s *PrizeServiceImpl) DistributePrize() []models.Prize {
 	}
 	fmt.Println("wallets: ", wallets)
 
-	//calculate the odds
-	//set the threshold --select all the staking money, calculate the prize pool
 	for _, wallet := range wallets {
 		prizes = append(prizes, models.Prize{wallet.Address, 11})
 	}
@@ -83,9 +81,9 @@ func (s *PrizeServiceImpl) DistributePrize() []models.Prize {
 	return prizes
 }
 
-func CallSmartContract() {
+func CallSmartContract(addresses string) {
 	// Connect to an Ethereum node (Infura or local node)
-	client, err := ethclient.Dial("https://mainnet.infura.io/v3/YOUR_INFURA_PROJECT_ID")
+	client, err := ethclient.Dial("https://mainnet.infura.io/v3/d68e6d7c2e5c42fbb30fe563ada8f432")
 	if err != nil {
 		log.Fatalf("Failed to connect to the Ethereum client: %v", err)
 	}
@@ -117,14 +115,15 @@ func CallSmartContract() {
 	}
 
 	// Define the contract address and ABI
-	contractAddress := common.HexToAddress("YOUR_CONTRACT_ADDRESS")
-	contractABI, err := abi.JSON(strings.NewReader(`YOUR_CONTRACT_ABI`)) // Use your contract's ABI as JSON string
+	contractAddress := common.HexToAddress("0x9AB786163fc09E3733e5E9133492eD47a814A029")
+	contractABI, err := abi.JSON(strings.NewReader(`[ { "inputs": [ { "internalType": "uint256", "name": "_num", "type": "uint256" } ], "name": "set", "outputs": [], "stateMutability": "nonpayable", "type": "function" }, { "inputs": [], "name": "num", "outputs": [ { "internalType": "uint256", "name": "", "type": "uint256" } ], "stateMutability": "view", "type": "function" } ]`)) // Use your contract's ABI as JSON string
 	if err != nil {
 		log.Fatalf("Failed to parse ABI: %v", err)
 	}
 
+	var min, max = 0, 99999999
 	// Prepare the function call
-	data, err := contractABI.Pack("someFunction", param1, param2) // Replace with your function name and parameters
+	data, err := contractABI.Pack("getRandomInRange", addresses, min, max) // Replace with your function name and parameters
 	if err != nil {
 		log.Fatalf("Failed to pack contract function: %v", err)
 	}
