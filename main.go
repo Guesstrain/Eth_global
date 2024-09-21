@@ -16,6 +16,7 @@ func main() {
 	router.POST("/addPrize", controllers.InsertPrize)
 	router.PUT("/prizes/:prize_name", controllers.UpdatePrize)
 	router.GET("/distribute-prizes", controllers.DistributePrize)
+	router.POST("/Verify", controllers.VerifyHandler)
 
 	router.Run(":8080")
 }

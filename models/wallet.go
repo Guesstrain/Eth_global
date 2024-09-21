@@ -21,3 +21,12 @@ type PrizeList struct {
 	CreatedAt   time.Time `json:"created_at" gorm:"autoCreateTime"`          // Automatically set at creation
 	UpdatedAt   time.Time `json:"updated_at" gorm:"autoUpdateTime"`          // Automatically set at update
 }
+
+type RequestPayload struct {
+	NullifierHash     string `json:"nullifier_hash"`
+	MerkleRoot        string `json:"merkle_root"`
+	Proof             string `json:"proof"`
+	VerificationLevel string `json:"verification_level"`
+	Action            string `json:"action"`
+	SignalHash        string `json:"signal_hash"`
+}
